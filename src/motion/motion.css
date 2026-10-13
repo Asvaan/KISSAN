@@ -1,0 +1,120 @@
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes kc-site-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  @keyframes kc-site-pop { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+  @keyframes kc-site-left { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+  @keyframes kc-site-slide { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+  @keyframes kc-site-drop { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+  @keyframes kc-site-grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes kc-site-grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  @keyframes kc-site-shimmer { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+  @keyframes kc-site-ping {
+    0% { box-shadow: 0 0 0 0 rgba(31, 122, 77, 0.5); }
+    70% { box-shadow: 0 0 0 6px rgba(31, 122, 77, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(31, 122, 77, 0); }
+  }
+
+  /* Shell: sidebar, brand stripe, header */
+  #root aside { animation: kc-site-slide 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  #root aside > div:first-child {
+    background-image: linear-gradient(90deg, #e07a2f, #ffffff, #1f7a4d, #ffffff, #e07a2f);
+    background-size: 200% 100%;
+    animation: kc-site-shimmer 8s linear infinite;
+  }
+  #root aside > button { animation: kc-site-left 0.6s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  #root aside > div:last-child { animation: kc-site-rise 0.6s 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  #root header { animation: kc-site-drop 0.6s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  #root header span[class*="bg-[#e8f6ee]"]::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: #1f7a4d;
+    vertical-align: 1px;
+    animation: kc-site-ping 2s infinite;
+  }
+
+  /* Sidebar navigation */
+  #root aside nav button {
+    position: relative;
+    transition: background-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: kc-site-left 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  #root aside nav button:nth-child(1) { animation-delay: 0.18s; }
+  #root aside nav button:nth-child(2) { animation-delay: 0.24s; }
+  #root aside nav button:nth-child(3) { animation-delay: 0.3s; }
+  #root aside nav button:nth-child(4) { animation-delay: 0.36s; }
+  #root aside nav button:nth-child(5) { animation-delay: 0.42s; }
+  #root aside nav button:nth-child(6) { animation-delay: 0.48s; }
+  #root aside nav button:hover { transform: translateX(4px); }
+  #root aside nav button:active { transform: translateX(4px) scale(0.97); }
+  #root aside nav button svg { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  #root aside nav button:hover svg { transform: scale(1.15) rotate(-6deg); }
+  #root aside nav button.bg-white::before {
+    content: '';
+    position: absolute;
+    left: -12px;
+    top: 24%;
+    bottom: 24%;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: #1f7a4d;
+    animation: kc-site-grow-y 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Controls */
+  #root input, #root select { transition: border-color 0.2s ease, box-shadow 0.25s ease, background-color 0.2s ease; }
+  #root input:focus, #root select:focus { border-color: #1f7a4d; box-shadow: 0 0 0 4px rgba(31, 122, 77, 0.12); }
+  #root main button, #root main a {
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, color 0.2s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+  }
+  #root main button:not(:disabled):active { transform: scale(0.96); }
+  #root main :is(button, a)[class*="bg-[#1f7a4d]"]:not(:disabled):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(31, 122, 77, 0.28);
+  }
+  #root main :is(button, a)[class*="border"]:not([class*="bg-[#1f7a4d]"]):not(:disabled):hover {
+    border-color: #9cc4a8;
+    box-shadow: 0 6px 16px rgba(28, 43, 36, 0.07);
+  }
+
+  /* Cards and panels */
+  #root main :is(div, button, li, figure, a)[class*="rounded-2xl"][class*="border"]:not(:has(table, input, select, .pigeon-tiles-box, .recharts-wrapper)):not([class*="h-[calc"] *) {
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+  #root main :is(div, button, li, figure, a)[class*="rounded-2xl"][class*="border"]:not(:has(table, input, select, .pigeon-tiles-box, .recharts-wrapper)):not([class*="h-[calc"] *):hover {
+    transform: translateY(-3px);
+    border-color: #b9d3bf;
+    box-shadow: 0 14px 30px rgba(28, 43, 36, 0.08);
+  }
+  #root main [class*="rounded-3xl"][class*="border"] { transition: box-shadow 0.35s ease, border-color 0.35s ease; }
+  #root main [class*="rounded-3xl"][class*="border"]:hover { box-shadow: 0 18px 40px rgba(28, 43, 36, 0.07); border-color: #c5dbc9; }
+  #root main tbody tr { transition: background-color 0.2s ease; }
+  #root main tbody tr:hover { background-color: #f4f8f3; }
+  #root main figure img { transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s ease; }
+  #root main figure:hover img { transform: scale(1.04); }
+  .kc-motion #root main figure img:not([data-kc-loaded]) { opacity: 0; }
+
+  /* Entrance animations applied by motion.ts */
+  .kc-motion [data-kc-wait] { opacity: 0; }
+  [data-kc-in] {
+    animation: kc-site-rise 0.65s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    animation-delay: calc(var(--kc-i, 0) * 80ms);
+  }
+  [data-kc-in='tile'] {
+    animation-name: kc-site-pop;
+    animation-duration: 0.55s;
+    animation-delay: calc(90ms + var(--kc-i, 0) * 60ms);
+  }
+  [data-kc-in='row'] {
+    animation-name: kc-site-left;
+    animation-duration: 0.45s;
+    animation-delay: calc(120ms + var(--kc-i, 0) * 35ms);
+  }
+  [data-kc-bar] {
+    transform-origin: left center;
+    animation: kc-site-grow-x 1.1s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    animation-delay: calc(250ms + var(--kc-i, 0) * 45ms);
+  }
+}

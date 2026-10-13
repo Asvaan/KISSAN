@@ -1,127 +1,437 @@
 import styles from './chatbot.css?inline';
-import { loadRegistry, type Registry } from './engine.ts';
-import { answer, SUGGESTIONS } from './reply.ts';
+import { loadRegistry } from './engine.ts';
+import { Conversation, MENU, type BotTurn, type Chip, type MenuItem } from './conversation.ts';
 
-const SPROUT = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 20h10"/><path d="M12 20v-8"/><path d="M12 12c0-3.3-2.7-6-6-6H4v1c0 3.3 2.7 6 6 6h2"/><path d="M12 12c0-3.3 2.7-6 6-6h2v1c0 3.3-2.7 6-6 6h-2"/></svg>`;
-const CLOSE = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
-const SEND = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>`;
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start(): void;
+  stop(): void;
+}
+
+const ICON = {
+  sprout: '<path d="M7 20h10"/><path d="M12 20v-8"/><path d="M12 12c0-3.3-2.7-6-6-6H4v1c0 3.3 2.7 6 6 6h2"/><path d="M12 12c0-3.3 2.7-6 6-6h2v1c0 3.3-2.7 6-6 6h-2"/>',
+  close: '<path d="M18 6 6 18M6 6l12 12"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/>',
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  up: '<path d="M7 10v12"/><path d="M15 5.9 14 10h5.8a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 18.4 22H7V10l4-8a3.1 3.1 0 0 1 4 3.9Z"/>',
+  down: '<path d="M17 14V2"/><path d="M9 18.1 10 14H4.2a2 2 0 0 1-2-2.3l1.4-8A2 2 0 0 1 5.6 2H17v12l-4 8a3.1 3.1 0 0 1-4-3.9Z"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  map: '<path d="M14.1 6.1 9.9 3.9a2 2 0 0 0-1.8 0L3.6 6.2A1 1 0 0 0 3 7.1v12.3a1 1 0 0 0 1.4.9l3.7-1.9a2 2 0 0 1 1.8 0l4.2 2.2a2 2 0 0 0 1.8 0l4.5-2.3a1 1 0 0 0 .6-.9V5.1a1 1 0 0 0-1.4-.9l-3.7 1.9a2 2 0 0 1-1.8 0Z"/><path d="M15 6v15"/><path d="M9 3v15"/>',
+  soil: '<path d="M2 22h20"/><path d="M5 18c1.5-2 3.5-3 7-3s5.5 1 7 3"/><path d="M12 15V8"/><path d="M12 8c0-2.5 2-4.5 4.5-4.5H18V5c0 2.5-2 4.5-4.5 4.5H12"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/>',
+  leaf: '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z"/><path d="M2 21c0-3 1.9-5.4 5.1-6"/>',
+} as const;
+
+const MENU_ICON: Record<MenuItem['id'], keyof typeof ICON> = {
+  farmer: 'user',
+  place: 'map',
+  soil: 'soil',
+  sow: 'calendar',
+  crop: 'leaf',
+};
+
+const TAB_NUDGES: Record<string, string> = {
+  'Cadastral map': 'Exploring the map? Ask me which crops suit any district.',
+  'Farmer register': 'Tap any farmer and I can suggest the best crop for their field.',
+  'Field audit': 'Flagged field? I can still tell you what its soil suits.',
+  'Season analytics': "Wondering what to sow this month? Just ask me.",
+  Compliance: 'Give me a holding ID and I will check its soil for you.',
+};
+
+const PLACEHOLDERS = [
+  'Type a farmer ID, e.g. PB-LDH-0001',
+  'Try "best crops for Moga"',
+  'Try "fertility 40, moisture 28"',
+  'Try "is cotton good for Bathinda?"',
+  'Try "what can I sow now?"',
+];
+
+function svg(name: keyof typeof ICON, size = 18): string {
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function clock(): string {
+  return new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+}
 
 export function mountChatbot(): void {
+  document.getElementById('kisaan-crop-advisor')?.remove();
   const host = document.createElement('div');
   host.id = 'kisaan-crop-advisor';
   document.body.appendChild(host);
   const root = host.attachShadow({ mode: 'open' });
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   root.innerHTML = `
     <style>${styles}</style>
-    <button class="kc-launcher" type="button" aria-label="Open crop advisor">${SPROUT}<span>Crop advisor</span></button>
-    <section class="kc-panel" role="dialog" aria-label="Crop advisor" hidden>
+    <div class="kc-nudge" role="status" hidden>
+      <button class="kc-nudge-close" type="button" aria-label="Dismiss">${svg('close', 12)}</button>
+      <div class="kc-nudge-body">
+        <span class="kc-nudge-avatar">${svg('sprout', 16)}</span>
+        <div><p class="kc-nudge-name">Kisaan Mitra</p><p class="kc-nudge-text"></p></div>
+      </div>
+      <button class="kc-nudge-action" type="button"></button>
+    </div>
+    <button class="kc-launcher" type="button" aria-label="Chat with Kisaan Mitra" aria-expanded="false">
+      <span class="kc-launcher-label">Ask Kisaan Mitra</span>
+      <span class="kc-launcher-orb"><span class="kc-icon-open">${svg('sprout', 24)}</span><span class="kc-icon-close">${svg('close', 22)}</span></span>
+      <span class="kc-badge-dot" hidden>1</span>
+    </button>
+    <section class="kc-panel" role="dialog" aria-label="Kisaan Mitra crop advisor" hidden>
       <header class="kc-header">
-        <div class="kc-header-icon">${SPROUT}</div>
+        <div class="kc-avatar">${svg('sprout', 20)}<span class="kc-online"></span></div>
         <div class="kc-header-text">
-          <p class="kc-eyebrow">Kisaan Credit</p>
-          <h2>Crop advisor <span>ਫ਼ਸਲ ਸਲਾਹ</span></h2>
-          <p class="kc-status">Connecting to registry…</p>
+          <h2>Kisaan Mitra <span>ਕਿਸਾਨ ਮਿੱਤਰ</span></h2>
+          <p class="kc-status"><span class="kc-status-dot"></span><span class="kc-status-text">Online · crop advisor for Punjab</span></p>
         </div>
-        <button class="kc-close" type="button" aria-label="Close crop advisor">${CLOSE}</button>
+        <button class="kc-icon-btn kc-menu-btn" type="button" aria-label="Main menu" title="Main menu">${svg('grid', 16)}</button>
+        <button class="kc-icon-btn kc-close" type="button" aria-label="Close chat" title="Close">${svg('close', 16)}</button>
       </header>
       <div class="kc-log" aria-live="polite"></div>
-      <div class="kc-chips"></div>
       <form class="kc-form">
-        <input class="kc-input" type="text" autocomplete="off" placeholder="Farmer ID, district, or your soil numbers" aria-label="Ask the crop advisor" />
-        <button class="kc-send" type="submit" aria-label="Send">${SEND}</button>
+        <input class="kc-input" type="text" autocomplete="off" aria-label="Message Kisaan Mitra" />
+        <button class="kc-icon-btn kc-mic" type="button" aria-label="Speak your question" title="Speak" hidden>${svg('mic', 17)}</button>
+        <button class="kc-send" type="submit" aria-label="Send">${svg('send', 16)}</button>
       </form>
+      <p class="kc-foot">Advice is based on registry NDVI, soil and weather data.</p>
     </section>`;
 
-  const launcher = root.querySelector<HTMLButtonElement>('.kc-launcher')!;
-  const panel = root.querySelector<HTMLElement>('.kc-panel')!;
-  const close = root.querySelector<HTMLButtonElement>('.kc-close')!;
-  const log = root.querySelector<HTMLDivElement>('.kc-log')!;
-  const chips = root.querySelector<HTMLDivElement>('.kc-chips')!;
-  const form = root.querySelector<HTMLFormElement>('.kc-form')!;
-  const input = root.querySelector<HTMLInputElement>('.kc-input')!;
-  const status = root.querySelector<HTMLParagraphElement>('.kc-status')!;
+  const $ = <T extends Element>(sel: string) => root.querySelector<T>(sel)!;
+  const launcher = $<HTMLButtonElement>('.kc-launcher');
+  const badge = $<HTMLSpanElement>('.kc-badge-dot');
+  const panel = $<HTMLElement>('.kc-panel');
+  const log = $<HTMLDivElement>('.kc-log');
+  const form = $<HTMLFormElement>('.kc-form');
+  const input = $<HTMLInputElement>('.kc-input');
+  const mic = $<HTMLButtonElement>('.kc-mic');
+  const statusText = $<HTMLSpanElement>('.kc-status-text');
+  const nudge = $<HTMLDivElement>('.kc-nudge');
+  const nudgeText = $<HTMLParagraphElement>('.kc-nudge-text');
+  const nudgeAction = $<HTMLButtonElement>('.kc-nudge-action');
 
-  let registry: Promise<Registry> | null = null;
+  let conversation: Promise<Conversation> | null = null;
+  let queue: Promise<void> = Promise.resolve();
+  let greeted = false;
+  let nudgeTimer = 0;
+  let nudgeSend: { text: string; label: string } | null = null;
+  const nudged = new Set<string>(JSON.parse(sessionStorage.getItem('kc-nudged') ?? '[]'));
 
-  const push = (who: 'bot' | 'user', html: string) => {
-    const el = document.createElement('div');
-    el.className = `kc-msg kc-${who}`;
-    if (who === 'user') el.textContent = html;
-    else el.innerHTML = html;
-    log.appendChild(el);
-    log.scrollTop = log.scrollHeight;
-    return el;
-  };
-
-  const ensureRegistry = () => {
-    if (!registry) {
-      registry = loadRegistry();
-      registry
-        .then((r) => {
-          const clean = r.parcels.filter((p) => p.violation === 'none').length;
-          status.textContent = `${r.parcels.length.toLocaleString()} holdings · ${clean.toLocaleString()} clean fields used for advice`;
-        })
-        .catch(() => {
-          status.textContent = 'Registry unavailable';
-          registry = null;
-        });
+  const ensureConversation = () => {
+    if (!conversation) {
+      conversation = loadRegistry().then((reg) => {
+        const clean = reg.parcels.filter((p) => p.violation === 'none').length;
+        statusText.textContent = `Online · ${reg.parcels.length.toLocaleString()} holdings, ${clean.toLocaleString()} clean fields`;
+        return new Conversation(reg);
+      });
+      conversation.catch(() => {
+        conversation = null;
+      });
     }
-    return registry;
+    return conversation;
   };
 
-  const ask = async (text: string) => {
+  const scrollIntoView = (el: HTMLElement) => {
+    const top = el.offsetTop - 12;
+    const bottom = el.offsetTop + el.offsetHeight + 12;
+    const target = el.offsetHeight + 24 > log.clientHeight ? top : bottom - log.clientHeight;
+    if (target > log.scrollTop) log.scrollTo({ top: target, behavior: reduced ? 'auto' : 'smooth' });
+  };
+
+  const countUp = (scope: HTMLElement) => {
+    if (reduced) return;
+    scope.querySelectorAll<HTMLElement>('[data-count]').forEach((el) => {
+      const target = Number(el.dataset.count);
+      if (!Number.isFinite(target) || target <= 0) return;
+      let start = 0;
+      const step = () => {
+        const now = performance.now();
+        if (!start) start = now;
+        const p = Math.min(1, (now - start) / 800);
+        el.textContent = String(Math.round(target * (1 - (1 - p) ** 3)));
+        if (p < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+      window.setTimeout(() => (el.textContent = String(target)), 1400);
+    });
+  };
+
+  const botRow = (html: string, first: boolean) => {
+    const row = document.createElement('div');
+    row.className = `kc-row kc-row-bot${first ? '' : ' kc-cont'}`;
+    row.innerHTML = `<span class="kc-avatar-sm">${svg('sprout', 14)}</span><div class="kc-bubble">${html}</div>`;
+    log.appendChild(row);
+    return row;
+  };
+
+  const userRow = (text: string) => {
+    const row = document.createElement('div');
+    row.className = 'kc-row kc-row-user';
+    const bubble = document.createElement('div');
+    bubble.className = 'kc-bubble';
+    bubble.textContent = text;
+    const time = document.createElement('span');
+    time.className = 'kc-time';
+    time.textContent = clock();
+    row.append(bubble, time);
+    log.appendChild(row);
+    scrollIntoView(row);
+  };
+
+  const typing = (first: boolean) => {
+    const row = botRow('<span class="kc-typing" aria-label="Kisaan Mitra is typing"><i></i><i></i><i></i></span>', first);
+    row.classList.add('kc-row-typing');
+    scrollIntoView(row);
+    return row;
+  };
+
+  const clearInteractive = () => {
+    log.querySelectorAll('.kc-chips').forEach((el) => el.remove());
+  };
+
+  const addChips = (chips: Chip[]) => {
+    if (!chips.length) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'kc-chips';
+    chips.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `kc-chip${c.send === '#menu' ? ' kc-chip-menu' : ''}`;
+      b.style.setProperty('--kc-i', String(i));
+      b.textContent = c.label;
+      b.addEventListener('click', () => send(c.send, c.label));
+      wrap.appendChild(b);
+    });
+    log.appendChild(wrap);
+    scrollIntoView(wrap);
+  };
+
+  const addMenu = () => {
+    const wrap = document.createElement('div');
+    wrap.className = 'kc-menu';
+    MENU.forEach((item, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'kc-menu-item';
+      b.style.setProperty('--kc-i', String(i));
+      b.innerHTML = `<span class="kc-menu-icon">${svg(MENU_ICON[item.id], 18)}</span><span class="kc-menu-text"><b>${item.label}</b><span>${item.hint}</span></span><span class="kc-menu-chevron">${svg('chevron', 16)}</span>`;
+      b.addEventListener('click', () => send(`#${item.id}`, item.label));
+      wrap.appendChild(b);
+    });
+    log.appendChild(wrap);
+    scrollIntoView(wrap);
+  };
+
+  const addFeedback = () => {
+    const wrap = document.createElement('div');
+    wrap.className = 'kc-feedback';
+    wrap.innerHTML = `<span>Was this helpful?</span><button type="button" data-v="good" aria-label="Yes, helpful">${svg('up', 14)}</button><button type="button" data-v="bad" aria-label="Not helpful">${svg('down', 14)}</button>`;
+    wrap.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
+      b.addEventListener('click', () => {
+        wrap.classList.add('kc-voted');
+        b.classList.add('kc-chosen');
+        wrap.querySelectorAll('button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
+        send(`#${b.dataset.v}`, b.dataset.v === 'good' ? 'Yes, that helped' : 'Not really');
+      }),
+    );
+    log.appendChild(wrap);
+  };
+
+  const play = async (turn: BotTurn) => {
+    for (const [i, html] of turn.bubbles.entries()) {
+      const len = html.replace(/<[^>]+>/g, '').length;
+      const delay = reduced ? 120 : i === 0 ? 420 + Math.min(380, len * 4) : 260 + Math.min(620, len * 1.4);
+      const dots = typing(i === 0);
+      await wait(delay);
+      dots.remove();
+      const row = botRow(html, i === 0);
+      countUp(row);
+      scrollIntoView(row);
+      if (i === turn.bubbles.length - 1) {
+        const time = document.createElement('span');
+        time.className = 'kc-time';
+        time.textContent = `Kisaan Mitra · ${clock()}`;
+        row.appendChild(time);
+      }
+    }
+    if (turn.menu) addMenu();
+    if (turn.feedback) addFeedback();
+    addChips(turn.chips);
+  };
+
+  const run = (job: (c: Conversation) => BotTurn) => {
+    queue = queue.then(async () => {
+      try {
+        const c = await ensureConversation();
+        await play(job(c));
+      } catch {
+        await play({
+          bubbles: ["<p>I couldn't load the farm registry just now. Please check your connection and try again.</p>"],
+          chips: [{ label: 'Try again', send: '#menu' }],
+        });
+      }
+    });
+    return queue;
+  };
+
+  function send(text: string, label = text) {
     const q = text.trim();
     if (!q) return;
-    push('user', q);
+    clearInteractive();
+    userRow(label.trim());
     input.value = '';
-    const pending = push('bot', '<p class="kc-typing"><span></span><span></span><span></span></p>');
-    try {
-      const reg = await ensureRegistry();
-      pending.innerHTML = answer(reg, q);
-    } catch {
-      pending.innerHTML = '<p>Could not load the parcel registry. Check your connection and try again.</p>';
-    }
-    log.scrollTop = pending.offsetTop - log.offsetTop - 12;
+    run((c) => c.respond(q));
+  }
+
+  const hideNudge = (remember: boolean) => {
+    window.clearTimeout(nudgeTimer);
+    if (nudge.hidden) return;
+    nudge.classList.add('kc-leaving');
+    window.setTimeout(() => {
+      nudge.hidden = true;
+      nudge.classList.remove('kc-leaving');
+    }, reduced ? 0 : 220);
+    if (remember) sessionStorage.setItem('kc-nudged', JSON.stringify([...nudged]));
   };
 
-  SUGGESTIONS.forEach((s) => {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'kc-chip';
-    chip.textContent = s;
-    chip.addEventListener('click', () => ask(s));
-    chips.appendChild(chip);
-  });
+  const showNudge = (key: string, text: string, action: { text: string; label: string } | null, ttl = 15000) => {
+    if (!panel.hidden || nudged.has(key)) return;
+    nudged.add(key);
+    sessionStorage.setItem('kc-nudged', JSON.stringify([...nudged]));
+    nudgeText.textContent = text;
+    nudgeSend = action;
+    nudgeAction.textContent = action ? action.label : 'Chat now';
+    nudge.hidden = false;
+    badge.hidden = false;
+    window.clearTimeout(nudgeTimer);
+    nudgeTimer = window.setTimeout(() => hideNudge(false), ttl);
+  };
 
-  const open = () => {
+  const open = (then?: { text: string; label: string } | null) => {
+    hideNudge(false);
+    badge.hidden = true;
+    launcher.classList.add('kc-active', 'kc-seen');
+    launcher.setAttribute('aria-expanded', 'true');
     panel.hidden = false;
-    launcher.hidden = true;
-    ensureRegistry();
-    if (!log.childElementCount) {
-      push(
-        'bot',
-        `<p class="kc-title">Sat Sri Akal</p>
-         <p>I check each field's NDVI, soil fertility, moisture, rainfall and temperature against approved farms in the registry, then suggest the best crop to grow.</p>
-         <p class="kc-meta">Ask about a farmer ID or name, a district, or type your own soil readings.</p>`,
-      );
+    panel.classList.remove('kc-closing');
+    ensureConversation();
+    if (!greeted) {
+      greeted = true;
+      run((c) => c.greet());
     }
-    input.focus();
+    if (then) send(then.text, then.label);
+    window.setTimeout(() => input.focus(), reduced ? 0 : 180);
   };
 
-  const hide = () => {
-    panel.hidden = true;
-    launcher.hidden = false;
-    launcher.focus();
+  const close = () => {
+    launcher.classList.remove('kc-active');
+    launcher.setAttribute('aria-expanded', 'false');
+    if (reduced) {
+      panel.hidden = true;
+      return;
+    }
+    panel.classList.add('kc-closing');
+    window.setTimeout(() => {
+      panel.hidden = true;
+      panel.classList.remove('kc-closing');
+    }, 200);
   };
 
-  launcher.addEventListener('click', open);
-  close.addEventListener('click', hide);
+  launcher.addEventListener('click', () => (panel.hidden ? open() : close()));
+  $<HTMLButtonElement>('.kc-close').addEventListener('click', close);
+  $<HTMLButtonElement>('.kc-menu-btn').addEventListener('click', () => send('#menu', 'Main menu'));
+  $<HTMLButtonElement>('.kc-nudge-close').addEventListener('click', () => hideNudge(true));
+  nudgeAction.addEventListener('click', () => open(nudgeSend));
+  nudge.addEventListener('mouseenter', () => window.clearTimeout(nudgeTimer));
+  nudge.addEventListener('mouseleave', () => {
+    nudgeTimer = window.setTimeout(() => hideNudge(false), 5000);
+  });
   panel.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hide();
+    if (e.key === 'Escape') close();
   });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    ask(input.value);
+    send(input.value);
+  });
+
+  let placeholder = 0;
+  input.placeholder = PLACEHOLDERS[0];
+  window.setInterval(() => {
+    if (document.activeElement === host && input.value) return;
+    placeholder = (placeholder + 1) % PLACEHOLDERS.length;
+    input.placeholder = PLACEHOLDERS[placeholder];
+  }, 4000);
+
+  const Speech = (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike });
+  const Recognition = Speech.SpeechRecognition ?? Speech.webkitSpeechRecognition;
+  if (Recognition) {
+    mic.hidden = false;
+    let rec: SpeechRecognitionLike | null = null;
+    mic.addEventListener('click', () => {
+      if (rec) {
+        rec.stop();
+        return;
+      }
+      rec = new Recognition();
+      rec.lang = 'en-IN';
+      rec.interimResults = true;
+      mic.classList.add('kc-listening');
+      input.placeholder = 'Listening…';
+      rec.onresult = (e) => {
+        const result = e.results[e.results.length - 1];
+        input.value = result[0].transcript;
+        if (result.isFinal) send(input.value);
+      };
+      rec.onend = rec.onerror = () => {
+        mic.classList.remove('kc-listening');
+        input.placeholder = PLACEHOLDERS[placeholder];
+        rec = null;
+      };
+      rec.start();
+    });
+  }
+
+  window.setTimeout(() => {
+    const h = new Date().getHours();
+    const part = h < 5 ? 'Hello' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    showNudge('welcome', `${part}! Not sure what to grow this season? I can check any field in seconds.`, null);
+  }, 3500);
+
+  document.addEventListener('click', (e) => {
+    if (e.composedPath().includes(host)) return;
+    const target = e.target as Element | null;
+    const tab = target?.closest('aside nav button');
+    if (tab) {
+      const label = tab.textContent?.trim() ?? '';
+      const text = TAB_NUDGES[label];
+      if (text) window.setTimeout(() => showNudge(`tab:${label}`, text, null), 900);
+      return;
+    }
+    let node: Element | null = target;
+    for (let depth = 0; node && depth < 6; depth++, node = node.parentElement) {
+      if (node.tagName === 'MAIN' || node.tagName === 'TABLE' || node.tagName === 'TBODY') break;
+      const ids = new Set(node.textContent?.match(/PB-[A-Z]{3}-\d{4}/g) ?? []);
+      if (ids.size > 1) break;
+      if (ids.size === 1) {
+        const id = [...ids][0];
+        const ask = { text: `Advise farmer ${id}`, label: `Advise ${id}` };
+        if (panel.hidden) {
+          nudged.delete(`farmer:${id}`);
+          showNudge(`farmer:${id}`, `Want crop advice for ${id}? I can check their soil and NDVI right now.`, ask);
+        } else {
+          addChips([{ label: ask.label, send: ask.text }]);
+        }
+        break;
+      }
+    }
   });
 }

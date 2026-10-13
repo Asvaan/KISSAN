@@ -179,6 +179,12 @@ export const CROPS: CropInfo[] = [
 
 export const CROP_BY_NAME = new Map(CROPS.map((c) => [c.name, c]));
 
+export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export function monthsUntilSowing(crop: CropInfo, month = new Date().getMonth() + 1): number {
+  return Math.min(...crop.sowMonths.map((m) => (m - month + 12) % 12));
+}
+
 const PROFILE_KEYS: ProfileKey[] = ['fertility', 'altitude', 'rainfall', 'moisture', 'temp', 'humidity'];
 
 const AGRO_WEIGHTS: Record<Exclude<ProfileKey, 'humidity'>, number> = {
