@@ -1,20 +1,17 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Kisaan Credit
 
-# Run and deploy your AI Studio app
+Agricultural loan registry for Punjab: cadastral map, farmer register, field audit, season analytics, compliance, and desk settings. Mirrors the deployment at https://kisaan-credit.vercel.app/.
 
-This contains everything you need to run your app locally.
+## Run locally
 
-View your app in AI Studio: https://ai.studio/apps/drive/1MXniVLhl_Cic5AmTOiDClEtP49vNTq2S
+**Prerequisites:** Node.js
 
-## Run Locally
+1. `npm install`
+2. `npm run dev` (opens http://localhost:3000)
 
-**Prerequisites:**  Node.js
+## Layout
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- `index.html` – entry page
+- `public/assets/` – compiled app bundle and stylesheet
+- `public/data/` – parcel registry, XGBoost risk model, model metrics, sample CSV
+- `public/data/training/` – training datasets (`training_features.csv`, `monthly_observations.csv`) and model figures

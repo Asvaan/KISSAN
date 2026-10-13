@@ -1,0 +1,37 @@
+{
+  "accuracy": 1.0,
+  "roc_auc": 1.0,
+  "f1_yes": 1.0,
+  "risk_mae": 1.383894681930542,
+  "risk_r2": 0.9935221076011658,
+  "train_rows": 1600,
+  "holdout_rows": 400,
+  "features": 36,
+  "classification_report": {
+    "no": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 280.0
+    },
+    "yes": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 120.0
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 400.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 400.0
+    }
+  }
+}

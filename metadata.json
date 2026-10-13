@@ -1,7 +1,0 @@
-{
-  "name": "Kisaan-Credit Command Center",
-  "description": "A professional B2B SaaS dashboard for bank loan officers utilizing satellite imagery analysis, ML-driven credit scoring, and AI-generated narratives for agricultural lending.",
-  "requestFramePermissions": [
-    "camera"
-  ]
-}
