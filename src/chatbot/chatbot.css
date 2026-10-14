@@ -359,6 +359,8 @@ p:last-child { margin-bottom: 0; }
 .kc-avoid { font-size: 12px; color: var(--kc-muted); margin-top: 10px; }
 
 .kc-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
+.kc-stats-3 { grid-template-columns: repeat(3, 1fr); }
+.kc-stats-4 { grid-template-columns: repeat(4, 1fr); }
 .kc-stat {
   min-width: 0;
   padding: 7px 3px;

@@ -1,6 +1,7 @@
 import { CROPS, CROP_BY_NAME, MONTH_NAMES, monthsUntilSowing, profileOf } from './engine.ts';
 import type { Advice, CropInfo, CropName, CropScore, Parcel, Profile, Registry } from './engine.ts';
 import {
+  acresText,
   avoidLine,
   breakdown,
   capitalise,
@@ -13,6 +14,7 @@ import {
   moistureWord,
   pick,
   profileChips,
+  statTiles,
 } from './render.ts';
 
 export interface Chip {
@@ -21,7 +23,7 @@ export interface Chip {
 }
 
 export interface MenuItem {
-  id: 'farmer' | 'place' | 'soil' | 'sow' | 'crop';
+  id: 'farmer' | 'place' | 'soil' | 'sow' | 'crop' | 'land';
   label: string;
   hint: string;
 }
@@ -39,11 +41,12 @@ export const MENU: MenuItem[] = [
   { id: 'soil', label: 'Check my soil', hint: '3 quick questions' },
   { id: 'sow', label: 'What to sow this month', hint: 'Open sowing windows' },
   { id: 'crop', label: 'Ask about a crop', hint: 'Water, season and fit' },
+  { id: 'land', label: 'Land holdings', hint: 'Acres per farmer and district' },
 ];
 
 type Flow =
   | { name: 'farmer' }
-  | { name: 'place'; purpose: 'best' | 'sow' | 'crop'; crop?: CropName; village?: string }
+  | { name: 'place'; purpose: 'best' | 'sow' | 'crop' | 'land'; crop?: CropName; village?: string }
   | { name: 'soil'; step: 'fertility' | 'moisture' | 'district'; fertility?: number; moisture?: number }
   | { name: 'crop' };
 
@@ -219,6 +222,8 @@ export class Conversation {
         return this.startSoil();
       case 'crop':
         return this.startCrop();
+      case 'land':
+        return this.startPlace('land');
       case 'good':
         return { bubbles: [`<p>${pick(['Glad that helped!', 'Great, happy farming!', 'Wonderful. Anything else I can check?'])}</p>`], chips: [chip('Another farmer', '#farmer'), MENU_CHIP] };
       case 'bad':
@@ -282,17 +287,8 @@ export class Conversation {
         this.flow = null;
         return this.farmerTurn(partial[0]);
       }
-      if (partial.length > 1) {
-        return {
-          bubbles: [
-            partial.length <= 8
-              ? `<p>I found ${partial.length} farmers matching "${esc(text)}". Which one?</p>`
-              : `<p>${partial.length} farmers match "${esc(text)}". Could you give me the full name or the ID? Here are a few:</p>`,
-          ],
-          chips: [...partial.slice(0, 8).map((p) => chip(`${p.name} · ${p.id}`, p.id)), MENU_CHIP],
-        };
-      }
-      return this.breakOut(text, lower) ?? this.notFound(text);
+      if (partial.length > 1) return this.nameMatches(text, partial);
+      return this.tryUnderstand(text, lower) ?? this.notFound(text);
     }
 
     if (tokens.length > 4 && /best|grow|sow|plant|why|compare|\bvs\b|good|crop|farmer/.test(lower)) {
@@ -302,6 +298,14 @@ export class Conversation {
 
     if (flow.name === 'place') {
       const found = this.findParcels(text, lower);
+      if (flow.purpose === 'land' && found.length === 1) {
+        this.flow = null;
+        return this.landTurn(found[0]);
+      }
+      if (flow.purpose === 'land' && /\b(all|punjab|state|everything|overall)\b/.test(lower)) {
+        this.flow = null;
+        return this.districtLandTurn(undefined, this.acreFilter(lower));
+      }
       if (flow.purpose === 'crop' && flow.crop && found.length === 1) {
         this.flow = null;
         const p = found[0];
@@ -317,6 +321,7 @@ export class Conversation {
         const village = this.findVillage(tokens) ?? flow.village;
         this.flow = null;
         if (flow.purpose === 'sow') return this.sowTurn(district, village);
+        if (flow.purpose === 'land') return this.districtLandTurn(district, this.acreFilter(lower));
         if (flow.purpose === 'crop' && flow.crop) {
           const advice = this.reg.bestInDistrict(district, village, this.month());
           return this.cropCheckTurn(flow.crop, advice, village ? `${village}, ${district}` : district, { district, village });
@@ -324,7 +329,7 @@ export class Conversation {
         return this.districtTurn(district, village);
       }
       return (
-        this.breakOut(text, lower) ?? {
+        this.tryUnderstand(text, lower) ?? {
           bubbles: ["<p>I didn't catch the district. Pick one below or type its name.</p>"],
           chips: [...this.districtChips(), MENU_CHIP],
         }
@@ -371,7 +376,27 @@ export class Conversation {
         ],
       };
     }
-    return this.breakOut(text, lower) ?? { bubbles: ['<p>Which crop? Pick one below.</p>'], chips: this.cropChips() };
+    return this.tryUnderstand(text, lower) ?? { bubbles: ['<p>Which crop? Pick one below.</p>'], chips: this.cropChips() };
+  }
+
+  private nameMatches(text: string, partial: Parcel[]): BotTurn {
+    this.flow = { name: 'farmer' };
+    return {
+      bubbles: [
+        partial.length <= 8
+          ? `<p>I found ${partial.length} farmers matching "${esc(text)}". Which one?</p>`
+          : `<p>${partial.length} farmers match "${esc(text)}". Could you give me the full name or the ID? Here are a few:</p>`,
+      ],
+      chips: [...partial.slice(0, 8).map((p) => chip(`${p.name} · ${acresText(p.acres)} · ${p.district}`, p.id)), MENU_CHIP],
+    };
+  }
+
+  private tryUnderstand(text: string, lower: string): BotTurn | null {
+    const saved = this.flow;
+    this.flow = null;
+    const turn = this.understand(text, lower);
+    if (!turn) this.flow = saved;
+    return turn;
   }
 
   private breakOut(text: string, lower: string): BotTurn | null {
@@ -403,12 +428,16 @@ export class Conversation {
       (crops.length === 1 && /compare|better than|\bvs\b|versus/.test(lower));
     const wantsWhen = crops.length > 0 && /\bwhen\b|sowing|sow date|best time|what time/.test(lower);
     const wantsNow = /this month|this season|right now|\bnow\b|\btoday\b/.test(lower);
+    const wantsLand =
+      /\bacres?\b|\bkill?e\b|\bbigha\b|smallholder|small farm|marginal|holding size|land (size|holding|area|record|detail)|size of|how (much|big|large)\b.*\b(land|farm|field|holding)|\bland\b.*\b(does|do|has|have|own)|\bown\b.*\bland/.test(lower) &&
+      !/\b(grow|sow|plant|crop|fertil|moist)/.test(lower);
     const month = this.month();
 
     if (parcel) {
       const advice = this.reg.adviseParcel(parcel, month);
       const place = { parcel, district: parcel.district, village: parcel.village };
       const label = `${firstName(parcel.name)} ji's field`;
+      if (wantsLand && !crops.length) return this.landTurn(parcel);
       if (wantsCompare) return this.compareTurn(crops, advice, label, place);
       if (crops.length) return this.cropCheckTurn(crops[0], advice, label, place);
       return this.farmerTurn(parcel);
@@ -432,6 +461,8 @@ export class Conversation {
       return this.profileTurn(profile, given, district);
     }
 
+    if (district && wantsLand) return this.districtLandTurn(district, this.acreFilter(lower));
+
     if (district) {
       const where = village ? `${village}, ${district}` : district;
       const advice = this.reg.bestInDistrict(district, village, month);
@@ -453,6 +484,11 @@ export class Conversation {
       };
     }
 
+    if (wantsLand) {
+      return this.ctx.parcel && !/\b(farms|holdings|all|punjab|district|state)\b/.test(lower)
+        ? this.landTurn(this.ctx.parcel)
+        : this.districtLandTurn(undefined, this.acreFilter(lower));
+    }
     if (wantsWhy) return this.explainTurn(crops[0]);
     if (wantsCompare) return this.compareTurn(crops);
     if (wantsWhen) return this.sowingTurn(crops[0]);
@@ -466,6 +502,11 @@ export class Conversation {
     if (/what crop|which crop|best crop|suggest|recommend|what (should|can|to)\b.*\b(grow|plant|sow)/.test(lower)) {
       if (this.ctx.advice) return this.recapTurn(this.ctx.advice, this.ctx.label ?? 'this field');
       return this.startPlace('best');
+    }
+    if (tokens.length <= 3) {
+      const partial = this.partialNameMatches(tokens);
+      if (partial.length === 1) return this.farmerTurn(partial[0]);
+      if (partial.length > 1) return this.nameMatches(text, partial);
     }
     return null;
   }
@@ -506,13 +547,101 @@ export class Conversation {
     };
   }
 
-  private startPlace(purpose: 'best' | 'sow'): BotTurn {
+  private startPlace(purpose: 'best' | 'sow' | 'land'): BotTurn {
     this.flow = { name: 'place', purpose };
+    if (purpose === 'land') {
+      return {
+        bubbles: ["<p>Whose land should I look up? Pick a district for its holdings, or type a farmer's ID or name.</p>"],
+        chips: [chip('All of Punjab'), ...this.districtChips()],
+      };
+    }
     const text =
       purpose === 'sow'
         ? `Which district? I'll check what can be sown there this ${MONTH_NAMES[this.month() - 1]}.`
         : pick(['Which district is the farm in?', 'Sure. Which district should I look at?']);
     return { bubbles: [`<p>${text}</p>`], chips: this.districtChips() };
+  }
+
+  private acreFilter(lower: string): { min?: number; max?: number } | undefined {
+    const over = lower.match(/(?:over|above|more than|bigger than|larger than|at least|>)\s*(\d+(?:\.\d+)?)\s*acres?/);
+    const under = lower.match(/(?:under|below|less than|smaller than|up to|<)\s*(\d+(?:\.\d+)?)\s*acres?/);
+    if (!over && !under) return /smallholder|small farm|marginal/.test(lower) ? { max: 5 } : undefined;
+    return { min: over ? parseFloat(over[1]) : undefined, max: under ? parseFloat(under[1]) : undefined };
+  }
+
+  private landTurn(p: Parcel): BotTurn {
+    const stats = this.reg.landStats(p.district);
+    const pct = this.reg.landPercentile(p);
+    const name = firstName(p.name);
+    this.setContext({ parcel: p, district: p.district, village: p.village, advice: this.reg.adviseParcel(p, this.month()), label: `${name} ji's field` });
+    const size = pct >= 75 ? 'one of the larger holdings' : pct <= 25 ? 'one of the smaller holdings' : 'a mid-sized holding';
+    const avg = Math.round(stats.mean * 10) / 10;
+    return {
+      bubbles: [
+        `<p><b>${esc(p.name)}</b> (${p.id}) holds <b>${acresText(p.acres)}</b> of land in ${esc(p.village)}, ${esc(p.district)}.</p>${statTiles([
+          ['Holding', acresText(p.acres)],
+          [`${p.district} average`, acresText(avg)],
+          ['Larger than', `${pct}% of farms`],
+        ])}`,
+        `<p>That's ${size} in ${esc(p.district)}, where ${stats.count} registered farms cover ${Math.round(stats.total).toLocaleString('en-IN')} acres.${p.acres < 5 ? ' It counts as a smallholding (under 5 acres).' : ''}</p>`,
+      ],
+      chips: [chip(`What should ${name} grow?`, p.id), chip(`Land holdings in ${p.district}`), chip('Another farmer', '#farmer'), MENU_CHIP],
+    };
+  }
+
+  private districtLandTurn(district?: string, filter?: { min?: number; max?: number }): BotTurn {
+    const where = district ?? 'Punjab';
+    if (district) {
+      this.setContext({ district, advice: this.reg.bestInDistrict(district, undefined, this.month()), label: `a typical field in ${district}` });
+    }
+    const farms = district ? this.reg.parcels.filter((p) => p.district === district) : this.reg.parcels;
+    const landChip = (p: Parcel) => chip(`${p.name} · ${acresText(p.acres)}`, `How much land does ${p.id} have?`);
+
+    if (filter) {
+      const hits = farms
+        .filter((p) => (filter.min === undefined || p.acres > filter.min) && (filter.max === undefined || p.acres < filter.max))
+        .sort((a, b) => b.acres - a.acres);
+      const range =
+        filter.min !== undefined && filter.max !== undefined
+          ? `between ${filter.min} and ${filter.max} acres`
+          : filter.min !== undefined
+            ? `over ${filter.min} acres`
+            : `under ${filter.max} acres`;
+      if (!hits.length) {
+        return { bubbles: [`<p>No registered farms ${range} in ${esc(where)}.</p>`], chips: [chip(`Land holdings in ${where}`), MENU_CHIP] };
+      }
+      const list = hits
+        .slice(0, 8)
+        .map((p) => `<li><b>${esc(p.name)}</b> · ${p.id} · ${acresText(p.acres)} · ${esc(p.village)}${district ? '' : `, ${esc(p.district)}`}</li>`)
+        .join('');
+      return {
+        bubbles: [
+          `<p>I found <b>${hits.length}</b> farm${hits.length > 1 ? 's' : ''} ${range} in ${esc(where)}${hits.length > 8 ? ', largest first' : ''}:</p><ul class="kc-list">${list}</ul>`,
+        ],
+        chips: [...hits.slice(0, 3).map(landChip), chip(`Land holdings in ${where}`), MENU_CHIP],
+      };
+    }
+
+    const stats = this.reg.landStats(district);
+    const r1 = (v: number) => Math.round(v * 10) / 10;
+    return {
+      bubbles: [
+        `<p>${esc(where)} has <b>${stats.count.toLocaleString('en-IN')}</b> registered farms covering <b>${Math.round(stats.total).toLocaleString('en-IN')} acres</b>.</p>${statTiles([
+          ['Average', acresText(r1(stats.mean))],
+          ['Median', acresText(r1(stats.median))],
+          ['Under 5 acres', `${stats.smallholders} farms`],
+          ['Largest', acresText(stats.largest.acres)],
+        ])}`,
+        `<p>Largest holding: <b>${esc(stats.largest.name)}</b> (${stats.largest.id}) with ${acresText(stats.largest.acres)} in ${esc(stats.largest.village)}. Smallest: <b>${esc(stats.smallest.name)}</b> (${stats.smallest.id}) with ${acresText(stats.smallest.acres)}.</p>`,
+      ],
+      chips: [
+        landChip(stats.largest),
+        chip(`Farms over 15 acres in ${where}`),
+        chip(`Farms under 5 acres in ${where}`),
+        district ? chip(`Best crops for ${district}`) : chip('Pick a district', '#land'),
+        MENU_CHIP,
+      ],
+    };
   }
 
   private startSoil(): BotTurn {
@@ -584,7 +713,7 @@ export class Conversation {
 
     const opener = pick([
       `Here's ${p.name}'s field (${p.id}) in ${p.village}, ${p.district}.`,
-      `Found it! ${p.name}, ${p.id}, farming ${p.acres} acres in ${p.village}, ${p.district}.`,
+      `Found it! ${p.name}, ${p.id}, from ${p.village}, ${p.district}.`,
       `Pulled up ${p.name}'s record (${p.id}) from ${p.village}, ${p.district}.`,
     ]);
     const flag =
@@ -592,7 +721,9 @@ export class Conversation {
         ? `<p class="kc-flag">Heads up: this holding is flagged for ${esc(VIOLATIONS[p.violation] ?? p.violation)}. My advice covers the soil only; the loan desk has to clear the flag first.</p>`
         : '';
     const seen = p.detectedCrop !== p.crop ? ` From orbit the field reads as <b>${esc(p.detectedCrop)}</b>, not ${esc(p.crop)}.` : '';
-    const summary = `<p>${esc(name)} ji's soil is <b>${fertilityWord(profile.fertility)}</b> (fertility ${profile.fertility.toFixed(0)}) and <b>${moistureWord(profile.moisture)}</b> (${profile.moisture.toFixed(1)}% moisture). NDVI averages ${ndviMean.toFixed(2)} and peaks in ${MONTH_NAMES[peak]}.${seen}</p>${profileChips(profile)}`;
+    const pct = this.reg.landPercentile(p);
+    const size = pct >= 75 ? ', one of the larger holdings in the district' : pct <= 25 ? ', one of the smaller holdings in the district' : '';
+    const summary = `<p>${esc(name)} ji farms <b>${acresText(p.acres)}</b>${size}. The soil is <b>${fertilityWord(profile.fertility)}</b> (fertility ${profile.fertility.toFixed(0)}) and <b>${moistureWord(profile.moisture)}</b> (${profile.moisture.toFixed(1)}% moisture). NDVI averages ${ndviMean.toFixed(2)} and peaks in ${MONTH_NAMES[peak]}.${seen}</p>${profileChips(profile, p.acres)}`;
     const verdict =
       top === current
         ? pick([`Good news: <b>${esc(p.crop)}</b> is already the best fit here. I'd keep it.`, `<b>${esc(p.crop)}</b> suits this field best, so no change needed.`])
@@ -607,6 +738,7 @@ export class Conversation {
         chip(`Why ${top.crop.name}?`),
         chip(`When to sow ${top.crop.name}?`),
         chip(`${top.crop.name} vs ${other.crop.name}`, `Compare ${top.crop.name} and ${other.crop.name}`),
+        chip('Land details', `How much land does ${p.id} have?`),
         chip('Another farmer', '#farmer'),
         MENU_CHIP,
       ],
@@ -625,8 +757,10 @@ export class Conversation {
       `For ${where}, these crops do best on approved farms:`,
       `I looked at approved farms across ${where}. Top picks:`,
     ]);
+    const land = this.reg.landStats(district);
+    const holdings = `<p class="kc-sub">${land.count} registered farms in ${esc(district)}, averaging ${acresText(Math.round(land.mean * 10) / 10)} each.</p>`;
     return {
-      bubbles: [`<p>${esc(opener)}</p>${profileChips(advice.profile)}`, `${cropCards(advice.ranked)}${avoidLine(advice.ranked)}`],
+      bubbles: [`<p>${esc(opener)}</p>${holdings}${profileChips(advice.profile)}`, `${cropCards(advice.ranked)}${avoidLine(advice.ranked)}`],
       chips: [
         chip(`What can I sow now in ${district}?`),
         chip(`Why ${top.crop.name}?`),
@@ -709,8 +843,11 @@ export class Conversation {
             : `I wouldn't recommend <b>${name}</b> for ${where}. It scores only ${c.score}/100.${limit}`;
     const better = idx > 0 ? `<p>If you're open to it, <b>${esc(top.crop.name)}</b> scores ${top.score} here.</p>` : '';
     const other = idx > 0 ? top : advice.ranked[1];
+    const holding = place.parcel
+      ? `<p class="kc-sub">${esc(place.parcel.name)} · ${place.parcel.id} · ${acresText(place.parcel.acres)} in ${esc(place.parcel.village)}, ${esc(place.parcel.district)}</p>`
+      : '';
     return {
-      bubbles: [`<p>${verdict}</p>`, `${cropCard(c, idx + 1, true, 0)}${better}`],
+      bubbles: [`${holding}<p>${verdict}</p>`, `${cropCard(c, idx + 1, true, 0)}${better}`],
       chips: [
         chip(`Why ${name}?`),
         chip(`When to sow ${name}?`),
@@ -831,13 +968,13 @@ export class Conversation {
     this.flow = { name: 'farmer' };
     return {
       bubbles: [`<p>${found.length} farmers are named <b>${esc(found[0].name)}</b>. Which one do you mean?</p>`],
-      chips: found.slice(0, 8).map((p) => chip(`${p.id} · ${p.village}, ${p.district}`, p.id)),
+      chips: found.slice(0, 8).map((p) => chip(`${p.id} · ${acresText(p.acres)} · ${p.village}, ${p.district}`, p.id)),
     };
   }
 
   private sampleFarmers(): Chip[] {
     const clean = this.reg.parcels.filter((p) => p.violation === 'none');
-    return Array.from({ length: 3 }, () => pick(clean)).map((p) => chip(`${p.name} · ${p.id}`, p.id));
+    return Array.from({ length: 3 }, () => pick(clean)).map((p) => chip(`${p.name} · ${acresText(p.acres)}`, p.id));
   }
 
   private districtChips(): Chip[] {

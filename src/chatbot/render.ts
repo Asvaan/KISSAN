@@ -64,17 +64,26 @@ export function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function profileChips(p: Profile): string {
-  const items = [
+export function acresText(acres: number): string {
+  return `${Number.isInteger(acres) ? acres : acres.toFixed(2).replace(/0$/, '')} acres`;
+}
+
+export function statTiles(items: [string, string][]): string {
+  const cls = items.length > 5 || items.length === 3 ? ' kc-stats-3' : items.length === 4 ? ' kc-stats-4' : '';
+  return `<div class="kc-stats${cls}">${items
+    .map(([k, v], i) => `<div class="kc-stat" style="--kc-i:${i}"><span>${esc(k)}</span><b>${esc(v)}</b></div>`)
+    .join('')}</div>`;
+}
+
+export function profileChips(p: Profile, acres?: number): string {
+  return statTiles([
+    ...(acres !== undefined ? [['Land', acresText(acres)] as [string, string]] : []),
     ['Fertility', p.fertility.toFixed(0)],
     ['Moisture', `${p.moisture.toFixed(1)}%`],
     ['Rainfall', `${p.rainfall.toFixed(0)} mm`],
     ['Temp', `${p.temp.toFixed(1)} °C`],
     ['Altitude', `${p.altitude.toFixed(0)} m`],
-  ];
-  return `<div class="kc-stats">${items
-    .map(([k, v], i) => `<div class="kc-stat" style="--kc-i:${i}"><span>${k}</span><b>${v}</b></div>`)
-    .join('')}</div>`;
+  ]);
 }
 
 export function avoidLine(ranked: CropScore[]): string {

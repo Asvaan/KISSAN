@@ -238,6 +238,16 @@ export interface CropScore {
   peers: { count: number; ndvi: number; risk: number; loanRate: number };
 }
 
+export interface LandStats {
+  count: number;
+  total: number;
+  mean: number;
+  median: number;
+  largest: Parcel;
+  smallest: Parcel;
+  smallholders: number;
+}
+
 export interface Advice {
   profile: Profile;
   district?: string;
@@ -389,6 +399,27 @@ export class Registry {
 
   adviseParcel(p: Parcel, month?: number): Advice {
     return this.advise(profileOf(p), p.district, month);
+  }
+
+  landStats(district?: string): LandStats {
+    const farms = district ? this.parcels.filter((p) => p.district === district) : this.parcels;
+    const acres = farms.map((p) => p.acres).sort((a, b) => a - b);
+    const total = acres.reduce((s, a) => s + a, 0);
+    const mid = Math.floor(acres.length / 2);
+    return {
+      count: farms.length,
+      total,
+      mean: total / farms.length,
+      median: acres.length % 2 ? acres[mid] : (acres[mid - 1] + acres[mid]) / 2,
+      largest: farms.reduce((a, b) => (b.acres > a.acres ? b : a)),
+      smallest: farms.reduce((a, b) => (b.acres < a.acres ? b : a)),
+      smallholders: farms.filter((p) => p.acres < 5).length,
+    };
+  }
+
+  landPercentile(p: Parcel): number {
+    const peers = this.parcels.filter((x) => x.district === p.district);
+    return Math.round((peers.filter((x) => x.acres < p.acres).length / peers.length) * 100);
   }
 
   findByName(query: string): Parcel[] {

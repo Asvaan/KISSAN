@@ -1,5 +1,6 @@
 import styles from './chatbot.css?inline';
-import { loadRegistry } from './engine.ts';
+import { loadRegistry, type Registry } from './engine.ts';
+import { acresText } from './render.ts';
 import { Conversation, MENU, type BotTurn, type Chip, type MenuItem } from './conversation.ts';
 
 interface SpeechRecognitionLike {
@@ -26,6 +27,7 @@ const ICON = {
   soil: '<path d="M2 22h20"/><path d="M5 18c1.5-2 3.5-3 7-3s5.5 1 7 3"/><path d="M12 15V8"/><path d="M12 8c0-2.5 2-4.5 4.5-4.5H18V5c0 2.5-2 4.5-4.5 4.5H12"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/>',
   leaf: '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z"/><path d="M2 21c0-3 1.9-5.4 5.1-6"/>',
+  area: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="10" height="10" rx="1"/>',
 } as const;
 
 const MENU_ICON: Record<MenuItem['id'], keyof typeof ICON> = {
@@ -34,6 +36,7 @@ const MENU_ICON: Record<MenuItem['id'], keyof typeof ICON> = {
   soil: 'soil',
   sow: 'calendar',
   crop: 'leaf',
+  land: 'area',
 };
 
 const TAB_NUDGES: Record<string, string> = {
@@ -120,6 +123,7 @@ export function mountChatbot(): void {
   const nudgeAction = $<HTMLButtonElement>('.kc-nudge-action');
 
   let conversation: Promise<Conversation> | null = null;
+  let registry: Registry | null = null;
   let queue: Promise<void> = Promise.resolve();
   let greeted = false;
   let nudgeTimer = 0;
@@ -129,6 +133,7 @@ export function mountChatbot(): void {
   const ensureConversation = () => {
     if (!conversation) {
       conversation = loadRegistry().then((reg) => {
+        registry = reg;
         const clean = reg.parcels.filter((p) => p.violation === 'none').length;
         statusText.textContent = `Online · ${reg.parcels.length.toLocaleString()} holdings, ${clean.toLocaleString()} clean fields`;
         return new Conversation(reg);
@@ -400,6 +405,8 @@ export function mountChatbot(): void {
     });
   }
 
+  window.setTimeout(() => ensureConversation(), 2000);
+
   window.setTimeout(() => {
     const h = new Date().getHours();
     const part = h < 5 ? 'Hello' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
@@ -424,9 +431,11 @@ export function mountChatbot(): void {
       if (ids.size === 1) {
         const id = [...ids][0];
         const ask = { text: `Advise farmer ${id}`, label: `Advise ${id}` };
+        const farm = registry?.byId.get(id);
+        const who = farm ? `${farm.name} (${id}, ${acresText(farm.acres)} in ${farm.village})` : id;
         if (panel.hidden) {
           nudged.delete(`farmer:${id}`);
-          showNudge(`farmer:${id}`, `Want crop advice for ${id}? I can check their soil and NDVI right now.`, ask);
+          showNudge(`farmer:${id}`, `Want crop advice for ${who}? I can check their soil and NDVI right now.`, ask);
         } else {
           addChips([{ label: ask.label, send: ask.text }]);
         }

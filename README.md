@@ -12,7 +12,7 @@ Agricultural loan registry for Punjab: cadastral map, farmer register, field aud
 ## Layout
 
 - `index.html` – entry page
-- `public/assets/` – compiled app bundle and stylesheet
+- `public/assets/` – compiled app bundle and stylesheet. The bundle is patched to show each farm's acreage in the farmer register, map search, compliance list and land record header.
 - `public/data/` – parcel registry, XGBoost risk model, model metrics, sample CSV
 - `public/data/training/` – training datasets (`training_features.csv`, `monthly_observations.csv`) and model figures
 - `src/chatbot/` – Kisaan Mitra crop advisor (bottom-right button)
@@ -26,7 +26,7 @@ Agricultural loan registry for Punjab: cadastral map, farmer register, field aud
 
 Suggests what to grow for a farmer ID or name, a district (optionally with a village), or typed soil readings such as "fertility 35, rainfall 420, moisture 26". It runs entirely in the browser on `public/data/punjab_parcels.json`.
 
-The chat opens with a main menu and guided flows (advise a farmer, best crops for a district, a 3-step soil check, what to sow this month, ask about a crop). Every answer ends with quick-reply chips and a helpful/not helpful prompt. It remembers the last farmer, district or soil profile, so follow-ups such as "why?", "compare maize and potato" or "when to sow it?" work without repeating details. It tolerates typos in names, districts and crops, and supports voice input where the browser provides speech recognition. Clicking any farmer row in the app offers advice for that farmer.
+The chat opens with a main menu and guided flows (advise a farmer, best crops for a district, a 3-step soil check, what to sow this month, ask about a crop, land holdings). Every farmer answer states the holding size; land questions such as "how much land does PB-ASR-0001 have?", "land holdings in Moga" or "farms over 20 acres in Bathinda" get acreage, district averages and rankings. Every answer ends with quick-reply chips and a helpful/not helpful prompt. It remembers the last farmer, district or soil profile, so follow-ups such as "why?", "compare maize and potato" or "when to sow it?" work without repeating details. It tolerates typos in names, districts and crops, and supports voice input where the browser provides speech recognition. Clicking any farmer row in the app offers advice for that farmer.
 
 Each of the seven crops is scored out of 100:
 
