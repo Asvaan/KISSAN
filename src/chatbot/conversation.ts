@@ -66,6 +66,7 @@ const VIOLATIONS: Record<string, string> = {
   illegal_cropping: 'an unpermitted crop',
   double_farming: 'overlapping harvest claims',
   drug_cultivation: 'suspected drug cultivation (off-season closed canopy)',
+  illegal_construction: 'illegal construction (built-up structure on agricultural land)',
 };
 
 const DISTRICT_ALIASES: Record<string, string> = {
@@ -431,6 +432,8 @@ export class Conversation {
     const wantsLand =
       /\bacres?\b|\bkill?e\b|\bbigha\b|smallholder|small farm|marginal|holding size|land (size|holding|area|record|detail)|size of|how (much|big|large)\b.*\b(land|farm|field|holding)|\bland\b.*\b(does|do|has|have|own)|\bown\b.*\bland/.test(lower) &&
       !/\b(grow|sow|plant|crop|fertil|moist)/.test(lower);
+    const wantsConstruction =
+      /\billegal construct|built-?up|farmhouse|unauthori[sz]ed (build|construct)|encroach/.test(lower);
     const month = this.month();
 
     if (parcel) {
@@ -461,6 +464,7 @@ export class Conversation {
       return this.profileTurn(profile, given, district);
     }
 
+    if (wantsConstruction) return this.violationTurn('illegal_construction', district);
     if (district && wantsLand) return this.districtLandTurn(district, this.acreFilter(lower));
 
     if (district) {
@@ -567,6 +571,34 @@ export class Conversation {
     const under = lower.match(/(?:under|below|less than|smaller than|up to|<)\s*(\d+(?:\.\d+)?)\s*acres?/);
     if (!over && !under) return /smallholder|small farm|marginal/.test(lower) ? { max: 5 } : undefined;
     return { min: over ? parseFloat(over[1]) : undefined, max: under ? parseFloat(under[1]) : undefined };
+  }
+
+  private violationTurn(code: string, district?: string): BotTurn {
+    const farms = this.reg.parcels
+      .filter((p) => p.violation === code && (!district || p.district === district))
+      .sort((a, b) => b.risk - a.risk);
+    const where = district ?? 'Punjab';
+    const label = VIOLATIONS[code] ?? code;
+    if (!farms.length) {
+      return {
+        bubbles: [`<p>No holdings in ${esc(where)} are currently flagged for ${esc(label)}.</p>`],
+        chips: [chip('Advise a farmer', '#farmer'), MENU_CHIP],
+      };
+    }
+    const list = farms
+      .slice(0, 8)
+      .map(
+        (p) =>
+          `<li><b>${esc(p.name)}</b> · ${p.id} · ${acresText(p.acres)} · ${esc(p.village)}${district ? '' : `, ${esc(p.district)}`} · risk ${p.risk} · ${esc(p.detectedCrop)}</li>`,
+      )
+      .join('');
+    return {
+      bubbles: [
+        `<p>The satellite desk has <b>${farms.length}</b> holding${farms.length > 1 ? 's' : ''} in ${esc(where)} flagged for ${esc(label)}. Assign an officer from Field audit, Compliance, or the land record to verify on site.</p>`,
+        `<ul class="kc-list">${list}</ul>${farms.length > 8 ? `<p class="kc-sub">${farms.length - 8} more cases on the Field audit queue.</p>` : ''}`,
+      ],
+      chips: [...farms.slice(0, 3).map((p) => chip(`${p.name} · ${p.id}`, p.id)), MENU_CHIP],
+    };
   }
 
   private landTurn(p: Parcel): BotTurn {

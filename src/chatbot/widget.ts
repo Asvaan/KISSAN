@@ -1,6 +1,5 @@
 import styles from './chatbot.css?inline';
-import { loadRegistry, type Registry } from './engine.ts';
-import { acresText } from './render.ts';
+import { loadRegistry } from './engine.ts';
 import { Conversation, MENU, type BotTurn, type Chip, type MenuItem } from './conversation.ts';
 
 interface SpeechRecognitionLike {
@@ -39,14 +38,6 @@ const MENU_ICON: Record<MenuItem['id'], keyof typeof ICON> = {
   land: 'area',
 };
 
-const TAB_NUDGES: Record<string, string> = {
-  'Cadastral map': 'Exploring the map? Ask me which crops suit any district.',
-  'Farmer register': 'Tap any farmer and I can suggest the best crop for their field.',
-  'Field audit': 'Flagged field? I can still tell you what its soil suits.',
-  'Season analytics': "Wondering what to sow this month? Just ask me.",
-  Compliance: 'Give me a holding ID and I will check its soil for you.',
-};
-
 const PLACEHOLDERS = [
   'Type a farmer ID, e.g. PB-LDH-0001',
   'Try "best crops for Moga"',
@@ -77,18 +68,9 @@ export function mountChatbot(): void {
 
   root.innerHTML = `
     <style>${styles}</style>
-    <div class="kc-nudge" role="status" hidden>
-      <button class="kc-nudge-close" type="button" aria-label="Dismiss">${svg('close', 12)}</button>
-      <div class="kc-nudge-body">
-        <span class="kc-nudge-avatar">${svg('sprout', 16)}</span>
-        <div><p class="kc-nudge-name">Kisaan Mitra</p><p class="kc-nudge-text"></p></div>
-      </div>
-      <button class="kc-nudge-action" type="button"></button>
-    </div>
     <button class="kc-launcher" type="button" aria-label="Chat with Kisaan Mitra" aria-expanded="false">
       <span class="kc-launcher-label">Ask Kisaan Mitra</span>
       <span class="kc-launcher-orb"><span class="kc-icon-open">${svg('sprout', 24)}</span><span class="kc-icon-close">${svg('close', 22)}</span></span>
-      <span class="kc-badge-dot" hidden>1</span>
     </button>
     <section class="kc-panel" role="dialog" aria-label="Kisaan Mitra crop advisor" hidden>
       <header class="kc-header">
@@ -111,29 +93,20 @@ export function mountChatbot(): void {
 
   const $ = <T extends Element>(sel: string) => root.querySelector<T>(sel)!;
   const launcher = $<HTMLButtonElement>('.kc-launcher');
-  const badge = $<HTMLSpanElement>('.kc-badge-dot');
   const panel = $<HTMLElement>('.kc-panel');
   const log = $<HTMLDivElement>('.kc-log');
   const form = $<HTMLFormElement>('.kc-form');
   const input = $<HTMLInputElement>('.kc-input');
   const mic = $<HTMLButtonElement>('.kc-mic');
   const statusText = $<HTMLSpanElement>('.kc-status-text');
-  const nudge = $<HTMLDivElement>('.kc-nudge');
-  const nudgeText = $<HTMLParagraphElement>('.kc-nudge-text');
-  const nudgeAction = $<HTMLButtonElement>('.kc-nudge-action');
 
   let conversation: Promise<Conversation> | null = null;
-  let registry: Registry | null = null;
   let queue: Promise<void> = Promise.resolve();
   let greeted = false;
-  let nudgeTimer = 0;
-  let nudgeSend: { text: string; label: string } | null = null;
-  const nudged = new Set<string>(JSON.parse(sessionStorage.getItem('kc-nudged') ?? '[]'));
 
   const ensureConversation = () => {
     if (!conversation) {
       conversation = loadRegistry().then((reg) => {
-        registry = reg;
         const clean = reg.parcels.filter((p) => p.violation === 'none').length;
         statusText.textContent = `Online · ${reg.parcels.length.toLocaleString()} holdings, ${clean.toLocaleString()} clean fields`;
         return new Conversation(reg);
@@ -297,33 +270,7 @@ export function mountChatbot(): void {
     run((c) => c.respond(q));
   }
 
-  const hideNudge = (remember: boolean) => {
-    window.clearTimeout(nudgeTimer);
-    if (nudge.hidden) return;
-    nudge.classList.add('kc-leaving');
-    window.setTimeout(() => {
-      nudge.hidden = true;
-      nudge.classList.remove('kc-leaving');
-    }, reduced ? 0 : 220);
-    if (remember) sessionStorage.setItem('kc-nudged', JSON.stringify([...nudged]));
-  };
-
-  const showNudge = (key: string, text: string, action: { text: string; label: string } | null, ttl = 15000) => {
-    if (!panel.hidden || nudged.has(key)) return;
-    nudged.add(key);
-    sessionStorage.setItem('kc-nudged', JSON.stringify([...nudged]));
-    nudgeText.textContent = text;
-    nudgeSend = action;
-    nudgeAction.textContent = action ? action.label : 'Chat now';
-    nudge.hidden = false;
-    badge.hidden = false;
-    window.clearTimeout(nudgeTimer);
-    nudgeTimer = window.setTimeout(() => hideNudge(false), ttl);
-  };
-
-  const open = (then?: { text: string; label: string } | null) => {
-    hideNudge(false);
-    badge.hidden = true;
+  const open = () => {
     launcher.classList.add('kc-active', 'kc-seen');
     launcher.setAttribute('aria-expanded', 'true');
     panel.hidden = false;
@@ -333,7 +280,6 @@ export function mountChatbot(): void {
       greeted = true;
       run((c) => c.greet());
     }
-    if (then) send(then.text, then.label);
     window.setTimeout(() => input.focus(), reduced ? 0 : 180);
   };
 
@@ -354,12 +300,6 @@ export function mountChatbot(): void {
   launcher.addEventListener('click', () => (panel.hidden ? open() : close()));
   $<HTMLButtonElement>('.kc-close').addEventListener('click', close);
   $<HTMLButtonElement>('.kc-menu-btn').addEventListener('click', () => send('#menu', 'Main menu'));
-  $<HTMLButtonElement>('.kc-nudge-close').addEventListener('click', () => hideNudge(true));
-  nudgeAction.addEventListener('click', () => open(nudgeSend));
-  nudge.addEventListener('mouseenter', () => window.clearTimeout(nudgeTimer));
-  nudge.addEventListener('mouseleave', () => {
-    nudgeTimer = window.setTimeout(() => hideNudge(false), 5000);
-  });
   panel.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') close();
   });
@@ -406,41 +346,4 @@ export function mountChatbot(): void {
   }
 
   window.setTimeout(() => ensureConversation(), 2000);
-
-  window.setTimeout(() => {
-    const h = new Date().getHours();
-    const part = h < 5 ? 'Hello' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-    showNudge('welcome', `${part}! Not sure what to grow this season? I can check any field in seconds.`, null);
-  }, 3500);
-
-  document.addEventListener('click', (e) => {
-    if (e.composedPath().includes(host)) return;
-    const target = e.target as Element | null;
-    const tab = target?.closest('aside nav button');
-    if (tab) {
-      const label = tab.textContent?.trim() ?? '';
-      const text = TAB_NUDGES[label];
-      if (text) window.setTimeout(() => showNudge(`tab:${label}`, text, null), 900);
-      return;
-    }
-    let node: Element | null = target;
-    for (let depth = 0; node && depth < 6; depth++, node = node.parentElement) {
-      if (node.tagName === 'MAIN' || node.tagName === 'TABLE' || node.tagName === 'TBODY') break;
-      const ids = new Set(node.textContent?.match(/PB-[A-Z]{3}-\d{4}/g) ?? []);
-      if (ids.size > 1) break;
-      if (ids.size === 1) {
-        const id = [...ids][0];
-        const ask = { text: `Advise farmer ${id}`, label: `Advise ${id}` };
-        const farm = registry?.byId.get(id);
-        const who = farm ? `${farm.name} (${id}, ${acresText(farm.acres)} in ${farm.village})` : id;
-        if (panel.hidden) {
-          nudged.delete(`farmer:${id}`);
-          showNudge(`farmer:${id}`, `Want crop advice for ${who}? I can check their soil and NDVI right now.`, ask);
-        } else {
-          addChips([{ label: ask.label, send: ask.text }]);
-        }
-        break;
-      }
-    }
-  });
 }

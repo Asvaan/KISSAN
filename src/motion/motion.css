@@ -15,7 +15,7 @@
 
   /* Shell: sidebar, brand stripe, header */
   #root aside { animation: kc-site-slide 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
-  #root aside > div:first-child {
+  #root aside.fixed > div:first-child {
     background-image: linear-gradient(90deg, #e07a2f, #ffffff, #1f7a4d, #ffffff, #e07a2f);
     background-size: 200% 100%;
     animation: kc-site-shimmer 8s linear infinite;
